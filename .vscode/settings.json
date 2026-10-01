@@ -1,0 +1,15 @@
+{
+    "Lua.diagnostics.globals": [
+        "read_file",
+        "path_type",
+        "listdir",
+        "sh",
+        "recv_crlf",
+        "response",
+        "request",
+        "urldecode",
+        "qs",
+        "token_hex",
+        "esc"
+    ]
+}
