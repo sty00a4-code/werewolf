@@ -191,3 +191,20 @@ button.small {
     text-align: center;
     border-color: var(--good);
 }
+
+.qrcard {
+    text-align: center;
+}
+
+.qr {
+    display: block;
+    width: 100%;
+    max-width: 12em;
+    margin: 0.5em auto;
+    background: #fff;
+}
+
+.url {
+    font-size: medium;
+    word-break: break-all;
+}

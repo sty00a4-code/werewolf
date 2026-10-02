@@ -5,13 +5,18 @@ require "std"
 local server = assert(socket.bind("*", 8000))
 local IP, PORT = server:getsockname()
 print(("[SERVE] http://%s:%s"):format(IP, PORT))
+local net = require "libs.net"
+net.set_port(PORT)
+for _, e in ipairs(net.lan_ips()) do
+    print(("[LAN]   http://%s:%s  (%s)"):format(e.ip, PORT, e.iface))
+end
 
 local state = require "gamestate"
 while true do
     local success, err = pcall(function()
         local client = server:accept()
         if client then
-            client:settimeout(1)
+            client:settimeout(2) -- idle/preconnect sockets must not stall the single-threaded loop
             local ip = client:getpeername()
             local header_blob, err = recv_crlf(client)
             if not header_blob then

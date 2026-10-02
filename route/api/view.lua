@@ -2,8 +2,10 @@
 --   204 -> nothing changed
 --   200 -> HTML fragment for #app, plus X-Version / X-Server-Time headers
 local render = require "render"
+local net = require "libs.net"
 
 ---@param state GameState
+---@param req Request
 return function(state, req, ip)
     local code = qs(req, "code")
     if not code then
@@ -30,5 +32,11 @@ return function(state, req, ip)
         return response { status = STATUS.no_content, headers = headers }
     end
     local view = room:view_for(player)
+    if not player and room.phase == "lobby" then -- the host screen shows a QR code players can scan
+        local url, all = net.join_url(room.code)
+        view.join_url = url
+        view.alt_urls = {}
+        for k = 2, #all do view.alt_urls[#view.alt_urls + 1] = ("http://%s:%d/"):format(all[k].ip, net.port) end
+    end
     return response { headers = headers, body = player and render.client(view) or render.host(view) }
 end

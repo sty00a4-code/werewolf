@@ -1,5 +1,7 @@
 return function(state, req, ip)
     local wolf_scale = tostring(512 / 4)
+    -- arriving from the host's QR code: /?code=ABCDEFGH fills in the code and jumps to the name box
+    local code = type(req.params.code) == "string" and req.params.code:upper():match("^%u%u%u%u%u%u%u%u$") or nil
     return response {
         body = WRAPPER {
             h1 { img {
@@ -13,6 +15,7 @@ return function(state, req, ip)
                     id = "name",
                     type = "text",
                     placeholder = "ENTER NAME",
+                    autofocus = code and true or nil,
                 },
                 div {
                     class = "input-row",
@@ -20,6 +23,7 @@ return function(state, req, ip)
                         id = "code",
                         type = "text",
                         placeholder = "ENTER CODE",
+                        value = code,
                         pattern = "[A-Z]*",
                         minlength = 8,
                         maxlength = 8,

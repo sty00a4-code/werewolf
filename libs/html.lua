@@ -1,13 +1,16 @@
 ---@class HTMLElement
+---@class HTMLTag
+---@field id string?
+---@field class string?
 
 ---@param name string
----@return fun(opts: table): HTMLElement
+---@return fun(opts: HTMLTag): HTMLElement
 local function elem(name)
     ---@param opts table
     ---@return table
     return function(opts)
         return setmetatable(opts, {
-            __name = name,
+            __name = "html-element." .. name,
             __tostring = function(self)
                 local keys = ""
                 for k, v in pairs(self) do
@@ -29,13 +32,13 @@ local function elem(name)
     end
 end
 ---@param name string
----@return fun(opts: table): HTMLElement
+---@return fun(opts: HTMLTag): HTMLElement
 local function void_elem(name)
     ---@param opts table
     ---@return table
     return function(opts)
         return setmetatable(opts, {
-            __name = name,
+            __name = "html-element." .. name,
             __tostring = function(self)
                 local keys = ""
                 for k, v in pairs(self) do

@@ -551,6 +551,8 @@ end
 ---@field action ActionView?
 ---@field pack { wolf: string, target: string }[]?
 ---@field progress { voted: integer, total: integer }?
+---@field join_url string?
+---@field alt_urls string[]?
 ---@param viewer Player?  nil = the shared host screen
 ---@return View
 function Game:view_for(viewer)
