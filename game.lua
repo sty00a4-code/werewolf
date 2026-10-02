@@ -21,11 +21,13 @@ math.randomseed(os.time())
 ---@field next_id integer
 ---@field players Player[]
 ---@field order Player[]
+---@field active_roles table<string, boolean>
+---@field wolves integer?
 ---@field by_token table<string, Player>
 ---@field log { round: integer, text: string }[]
----@field night { wolf_votes: integer[], acted: integer[], protect: integer? }?
+---@field night { wolf_votes: integer[], acted: integer[], verb_target: table<string, integer> }?
 ---@field votes integer[]
----@field last_protected integer?
+---@field last_verb_target table<string, integer>
 ---@field winner string?
 local Game = {}
 Game.__index = Game
@@ -37,10 +39,6 @@ Game.config = {
 }
 local cfg = Game.config
 
-----------------------------------------------------------------------
--- Roles. To add one (Hunter, Witch...) add an entry here and, if it
--- acts at night, a matching entry in `verbs` below.
-----------------------------------------------------------------------
 Game.roles = {
     werewolf = {
         name = "Werewolf",
@@ -64,6 +62,12 @@ Game.roles = {
         team = "village",
         verb = "protect",
         blurb = "Each night you protect one player from the wolves. (not the same player two nights in a row)",
+    },
+    slut = {
+        name = "Slut",
+        team = "village",
+        verb = "sleep",
+        blurb = "Each night you have a one night stand with a player. If they get eaten at night so do you.",
     },
 }
 
@@ -142,10 +146,19 @@ verbs.inspect = {
 verbs.protect = {
     prompt = "Choose someone to protect",
     targets = function(g, actor)
-        return g:filter(function(pl) return pl.alive and pl.id ~= g.last_protected end)
+        return g:filter(function(pl) return pl.alive and pl.id ~= g.last_verb_target.protect end)
     end,
     apply = function(g, actor, target)
-        g.night.protect = target.id
+        g.night.verb_target.protect = target.id
+    end,
+}
+verbs.sleep = {
+    prompt = "Choose someone to sleep with. (if you don't it will be randomized)",
+    targets = function(g, actor)
+        return g:filter(function(pl) return pl.alive and pl.id ~= g.last_verb_target.sleep and pl.id ~= actor.id end)
+    end,
+    apply = function(g, actor, target)
+        g.night.verb_target.sleep = target.id
     end,
 }
 
@@ -153,6 +166,10 @@ verbs.protect = {
 ---@return Game
 function Game.new(code)
     local now = os.time()
+    local active_roles = {}
+    for name in pairs(Game.roles) do
+        active_roles[name] = true
+    end
     return setmetatable({
         code = code,
         host_key = token_hex(8),
@@ -164,12 +181,13 @@ function Game.new(code)
         next_id = 1,
         players = {},  -- id -> Player
         order = {},    -- Players in join order
+        active_roles = active_roles,
         by_token = {}, -- token -> Player
         log = {},      -- public history, {round=, text=}
         night = nil,   -- {wolf_votes={}, acted={}, protect=nil} during night
         votes = {},    -- voter id -> target id (0 = abstain) during day
-        last_protected = nil,
         winner = nil,
+        last_verb_target = {},
     }, Game)
 end
 
@@ -226,20 +244,25 @@ function Game:join(name)
 end
 
 ---@param n integer
+---@param active table<string, boolean>
+---@param wolves integer?
 ---@return string[]
-local function role_pool(n)
-    local wolves = math.max(1, math.floor(n / 4))
+local function role_pool(n, active, wolves)
+    wolves = wolves or math.max(1, math.floor(n / 4))
     local pool = {}
     for _ = 1, wolves do pool[#pool + 1] = "werewolf" end
-    pool[#pool + 1] = "seer"
-    pool[#pool + 1] = "doctor"
+    for name in pairs(Game.roles) do
+        if name ~= "werewolf" and name ~= "villager" and active[name] then
+            pool[#pool + 1] = name
+        end
+    end
     while #pool < n do pool[#pool + 1] = "villager" end
     return shuffle(pool)
 end
 
 function Game:reset_to_lobby()
     self.phase, self.round, self.winner = "lobby", 0, nil
-    self.night, self.votes, self.last_protected = nil, {}, nil
+    self.night, self.votes, self.last_verb_target = nil, {}, {}
     self.log = {}
     for _, pl in ipairs(self.order) do
         pl.role, pl.alive, pl.notes = nil, true, {}
@@ -257,7 +280,7 @@ function Game:host_act(kind, target_id)
         if #self.order < cfg.min_players then
             return false, ("You need at least %d players."):format(cfg.min_players)
         end
-        local pool = role_pool(#self.order)
+        local pool = role_pool(#self.order, self.active_roles, self.wolves)
         for idx, pl in ipairs(self.order) do
             pl.role, pl.alive, pl.notes = pool[idx], true, {}
         end
@@ -336,7 +359,7 @@ function Game:begin_night()
     local now = os.time()
     self.round = self.round + 1
     self.phase = "night"
-    self.night = { wolf_votes = {}, acted = {}, protect = nil }
+    self.night = { wolf_votes = {}, acted = {}, verb_target = {} }
     self.votes = {}
     self:bump()
 end
@@ -389,13 +412,31 @@ function Game:resolve_night()
     for _, tid in pairs(self.night.wolf_votes) do tally[tid] = (tally[tid] or 0) + 1 end
     local top = leaders(tally)
     local victim = top[1] and self.players[top[math.random(#top)]] -- ties: random among the leaders
+    if self.night.verb_target.sleep == nil then
+        local slut = self:filter(function(pl)
+            return pl.role == "slut"
+        end)[1]
+        local pls = self:filter(function(pl)
+            return pl.id ~= slut.id and pl.id ~= self.last_verb_target.sleep
+        end)
+        self.night.verb_target.sleep = pls[math.random(#pls)].id
+    end
 
-    if victim and victim.id ~= self.night.protect then
+    if victim and victim.id ~= self.night.verb_target.protect then
         self:kill(victim, "was killed in the night")
     else
         self:say("Dawn breaks. Nobody died last night.") -- deliberately vague: doesn't reveal a save
     end
-    self.last_protected = self.night.protect
+    if victim and self.night.verb_target.sleep == victim.id then
+        local slut = self:filter(function(pl)
+            return pl.role == "slut"
+        end)[1]
+        self:kill(slut, "was killed in the night")
+    end
+    self.last_verb_target = {}
+    for verb, target in pairs(self.night.verb_target) do
+        self.last_verb_target[verb] = target
+    end
 
     local winner = self:check_win()
     if winner then return self:finish(winner) end
