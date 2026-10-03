@@ -8,7 +8,7 @@ return function(state, req, ip)
     local key = qs(req, "key")
     if key then
         if not room:is_host(key) then return response { status = STATUS.forbidden, body = "Bad host key." } end
-        ok, err = room:host_act(kind, target)
+        ok, err = room:host_act(kind, target, { name = qs(req, "name"), value = qs(req, "value") })
     else
         local player = room:player_by_token(qs(req, "token"))
         if not player then return response { status = STATUS.forbidden, body = "Unknown player." } end
